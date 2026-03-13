@@ -23,219 +23,264 @@ metadata:
 
 # Snyk Security Scanning
 
-Snyk is the primary security scanning tool across four domains: source code, dependencies,
-containers, and infrastructure-as-code. The goal is never just to run a scan — it's to
-leave the project with its security issues actually resolved.
+# Instructions
 
-## Prerequisites
+The goal is never just to run a scan — it's to leave the project with its security
+issues actually resolved. Each use case below follows the same core loop:
+scan → analyze → fix → verify → repeat until clean.
 
-Before scanning, verify Snyk is installed and authenticated:
+Before starting any scan, verify Snyk is ready:
 
 ```bash
-snyk --version          # should return a version number
-snyk auth               # authenticate if not already done (opens browser)
-# or: SNYK_TOKEN=<token> snyk <command>
+snyk --version   # confirms CLI is installed
+snyk auth        # opens browser to authenticate (one-time setup)
 ```
 
-If Snyk is not installed:
+If Snyk is not installed, help the user install it first:
 - npm: `npm install -g snyk`
 - Homebrew: `brew tap snyk/tap && brew install snyk`
-- Direct download: https://github.com/snyk/cli/releases
 
 ---
 
-## Use Cases
+### Step 1: Identify the scan scope
 
-### Use Case 1: Secure Project Source Code (SAST)
+Determine which domains apply to this project. When the user's request is specific
+("scan my Dockerfile"), go directly to that use case. When it's ambiguous ("make my
+project secure"), run all applicable scans.
 
-**Goal:** Find and fix security vulnerabilities in the code the developer wrote —
-SQL injection, XSS, hardcoded secrets, insecure crypto, path traversal, etc.
-
-**Reference file:** `references/code-security.md` — read this for command flags,
-interpreting findings, fix patterns, and secure coding rules to apply during fixes.
-
-**Steps:**
-
-1. **Scan** — Run Snyk Code against the project:
-   ```bash
-   snyk code test
-   ```
-
-2. **Analyze** — For each finding, understand:
-   - What type of vulnerability it is (e.g., SQL Injection, XSS)
-   - Where the vulnerable code is (file + line number)
-   - The data flow Snyk shows — how untrusted input reaches the vulnerable sink
-   - The severity and whether it's practically exploitable in context
-
-3. **Fix** — Modify the source code to remediate the vulnerability. Prioritize
-   Critical and High severity first. Apply the secure coding patterns from
-   `references/code-security.md` — don't just suppress the finding, fix the root cause.
-
-4. **Verify** — Re-run `snyk code test` and confirm the finding is gone. If new
-   issues surface from the fix, address those too.
-
-5. **Repeat** steps 2–4 until no Critical or High severity issues remain.
-
-**Done when:** `snyk code test` returns no Critical or High findings, or the
-remaining findings have been reviewed and accepted with documented justification.
+| What to scan | Use case | CLI command |
+|---|---|---|
+| Source code (JS, Python, Java, Go, etc.) | Use Case A | `snyk code test` |
+| npm, pip, Maven, Go modules, etc. | Use Case B | `snyk test` |
+| Docker images | Use Case C | `snyk container test` |
+| Terraform, Kubernetes YAML, CloudFormation | Use Case D | `snyk iac test` |
 
 ---
 
-### Use Case 2: Secure Project Dependencies (SCA)
+### Step 2: Run the scan (choose the use case)
 
-**Goal:** Find and fix known vulnerabilities (CVEs) in open-source libraries and
-packages the project depends on — both direct and transitive dependencies.
+#### Use Case A — Secure Project Source Code (SAST)
 
-**Reference file:** `references/dependency-security.md` — read this for package
-manager specifics, fix strategies, and CI integration patterns.
+Finds vulnerabilities in code the developer wrote: SQL injection, XSS, hardcoded
+secrets, insecure crypto, path traversal, etc.
 
-**Steps:**
+Reference: `references/code-security.md` — command flags, fix patterns, and secure
+coding rules to apply during remediation.
 
-1. **Ensure dependencies are installed** — Snyk reads the actual dependency tree,
-   so install first:
-   ```bash
-   npm install        # or pip install, mvn install, go mod download, etc.
-   ```
+```bash
+snyk code test
+```
 
-2. **Scan** — Run Snyk's dependency scan:
-   ```bash
-   snyk test
-   # For monorepos or multiple manifests:
-   snyk test --all-projects
-   ```
+Expected output: a list of findings grouped by severity, each with file path, line
+number, vulnerability type, and data flow showing how untrusted input reaches the sink.
 
-3. **Analyze** — For each vulnerability, understand:
-   - Which package is affected and what the CVE is
-   - Whether Snyk shows a fix path (upgradeable / patchable / no fix)
-   - Whether the vulnerability is reachable given how the package is used
-   - Whether it's in a production or dev-only dependency
+For each finding, prioritize Critical and High first. Read the data flow to understand
+the attack vector, then fix the root cause in the source code. Re-run to confirm
+the finding is gone before moving to the next one.
 
-4. **Fix** — Apply the fix that Snyk recommends:
-   - **Upgrade:** bump the direct dependency to the version that resolves it
-   - **Patch:** apply Snyk's patch if available (`snyk fix`)
-   - **Replace:** swap out a package with no fix for a maintained alternative
-   - **Ignore (last resort):** `snyk ignore --id=<ID> --reason="..." --expiry=<date>`
-
-5. **Verify** — Re-run `snyk test` and confirm the fixed vulnerabilities are gone.
-   Check that the upgrade didn't introduce new issues.
-
-6. **Repeat** steps 3–5 until no Critical or High severity findings remain.
-
-**Done when:** `snyk test` returns no Critical or High findings, or remaining
-findings are documented ignores with justification and expiry dates.
+**Done when:** `snyk code test` returns no Critical or High findings.
 
 ---
 
-### Use Case 3: Secure Container Images
+#### Use Case B — Secure Project Dependencies (SCA)
 
-**Goal:** Find and fix vulnerabilities in Docker images — OS package CVEs, bundled
-application dependency CVEs, and Dockerfile security misconfigurations.
+Finds known CVEs in open-source libraries — both direct and transitive dependencies.
 
-**Reference file:** `references/container-security.md` — read this for base image
-selection, Dockerfile best practices, and rebuild/re-scan workflow.
+Reference: `references/dependency-security.md` — package manager specifics, upgrade
+paths, ignore workflow, and CI integration patterns.
 
-**Steps:**
+```bash
+# Install dependencies first so Snyk can read the full tree
+npm install   # or: pip install -r requirements.txt, mvn install, go mod download, etc.
 
-1. **Scan** — Test the image, including the Dockerfile if available:
-   ```bash
-   snyk container test <image>:<tag>
-   # With Dockerfile for enhanced analysis:
-   snyk container test <image>:<tag> --file=Dockerfile
-   ```
+snyk test
+# Monorepos or multiple manifests:
+snyk test --all-projects
+```
 
-2. **Analyze** — Group findings by type:
-   - **OS package vulnerabilities** — what base image introduced them, and whether
-     a base image upgrade would fix them (Snyk suggests specific alternatives)
-   - **Application dependency vulnerabilities** — packages installed via npm/pip/etc.
-     inside the image
-   - **Dockerfile misconfigurations** — running as root, exposed ports, no USER
-     directive, secrets in ENV, etc.
+Expected output: vulnerabilities grouped by package, each with CVE ID, severity,
+affected version range, and fix path (upgrade / patch / no fix available).
 
-3. **Fix** — Address each category:
-   - **Base image upgrade:** update the `FROM` line in the Dockerfile to the version
-     Snyk recommends, or switch to a slimmer/distroless alternative
-   - **App dependency CVEs:** fix in the source manifest (same as Use Case 2) and
-     rebuild
-   - **Dockerfile issues:** apply best practices from `references/container-security.md`
+For each finding: upgrade direct dependencies to the fixed version, run `snyk fix`
+for auto-applicable patches, or document an ignore with justification and expiry
+as a last resort. Re-run after each fix to confirm and check for newly exposed issues.
 
-4. **Rebuild and verify:**
-   ```bash
-   docker build -t <image>:<new-tag> .
-   snyk container test <image>:<new-tag> --file=Dockerfile
-   ```
+**Done when:** `snyk test` returns no Critical or High findings.
 
-5. **Repeat** steps 2–4 until no Critical or High findings remain.
+---
+
+#### Use Case C — Secure Container Images
+
+Finds OS package CVEs, application dependency CVEs, and Dockerfile misconfigurations
+in Docker images.
+
+Reference: `references/container-security.md` — base image selection, Dockerfile
+best practices, multi-stage builds, rebuild/re-scan workflow.
+
+```bash
+snyk container test IMAGE:TAG
+# With Dockerfile for enhanced misconfiguration analysis:
+snyk container test IMAGE:TAG --file=Dockerfile
+```
+
+Expected output: OS vulnerabilities grouped by base image layer, application
+dependency vulnerabilities, and Dockerfile issues (running as root, missing USER,
+secrets in ENV, etc.). Snyk also suggests specific base image upgrades that would
+reduce the total vulnerability count.
+
+Fix by upgrading the base image (`FROM` line) to the version Snyk recommends,
+fixing any app dependency CVEs in the source manifest, and correcting Dockerfile
+issues. Rebuild and re-scan to verify.
+
+```bash
+docker build -t IMAGE:NEW-TAG .
+snyk container test IMAGE:NEW-TAG --file=Dockerfile
+```
 
 **Done when:** The rebuilt image passes `snyk container test` with no Critical or
 High severity findings.
 
 ---
 
-### Use Case 4: Secure Infrastructure-as-Code
+#### Use Case D — Secure Infrastructure-as-Code
 
-**Goal:** Find and fix security misconfigurations in IaC files before they reach
-production — publicly exposed resources, missing encryption, over-permissive IAM,
-containers running as root, missing network policies, etc.
+Finds misconfigurations in Terraform, Kubernetes, CloudFormation, ARM templates,
+Helm charts, and Serverless files before they reach production.
 
-**Reference file:** `references/iac-security.md` — read this for Terraform,
-Kubernetes, and CloudFormation fix patterns with concrete before/after examples.
+Reference: `references/iac-security.md` — fix patterns with before/after examples
+for AWS, GCP, Azure, and Kubernetes.
 
-**Steps:**
+```bash
+snyk iac test ./infrastructure/
+# Or target specific files:
+snyk iac test main.tf
+snyk iac test k8s/deployment.yaml
+```
 
-1. **Scan** — Test all IaC files in the project:
-   ```bash
-   snyk iac test ./infrastructure/
-   # Or a specific file:
-   snyk iac test main.tf
-   snyk iac test k8s/deployment.yaml
-   ```
+Expected output: findings grouped by severity, each with the affected resource name,
+the exact misconfigured attribute path (e.g., `aws_s3_bucket.data > acl`), the
+security risk it creates, and remediation guidance.
 
-2. **Analyze** — For each finding, understand:
-   - The affected resource and the specific misconfigured attribute (Snyk shows
-     the exact path, e.g., `aws_s3_bucket.data > acl`)
-   - What security risk the misconfiguration creates
-   - Whether it's a real exposure or already mitigated by other controls
+Fix by modifying the IaC file to correct the misconfiguration — apply least privilege,
+enable encryption, restrict public access. Re-run to verify. The principle across all
+IaC fixes is: default to deny, encrypt at rest and in transit, minimize blast radius.
 
-3. **Fix** — Modify the IaC file to correct the misconfiguration. Use the examples
-   in `references/iac-security.md` as templates. The principle is always least
-   privilege and defense in depth: restrict access, enable encryption, require
-   authentication.
-
-4. **Verify** — Re-run `snyk iac test` on the modified file to confirm the finding
-   is resolved and no new issues were introduced.
-
-5. **Repeat** steps 2–4 until no Critical or High severity findings remain.
-
-**Done when:** `snyk iac test` returns no Critical or High findings. Review
-remaining Medium/Low findings and document accepted risks where applicable.
+**Done when:** `snyk iac test` returns no Critical or High findings.
 
 ---
 
-## Choosing the Right Use Case
+### Step 3: Monitor ongoing security
 
-When the user's request is ambiguous (e.g., "make my project secure"), assess the
-project and run all applicable use cases. A typical full-project security pass:
-
-```bash
-snyk code test          # source code (if applicable language)
-snyk test               # dependencies
-snyk container test ... # if Docker is in use
-snyk iac test ./infra   # if IaC files exist
-```
-
-Address findings in order of severity across all scan types.
-
-## Severity Reference
-
-- **Critical** — Actively exploitable, fix before anything else
-- **High** — Significant risk, fix before next release
-- **Medium** — Address in normal sprint cycles
-- **Low** — Track and fix when convenient
-
-## After All Issues Are Resolved
+After resolving all findings, register the project for continuous monitoring:
 
 ```bash
-snyk monitor            # upload snapshot for ongoing monitoring
+snyk monitor
 ```
 
-Snyk will alert when new vulnerabilities are published that affect the project.
+Snyk will alert when new vulnerabilities are published that affect the project,
+so issues are caught before they become incidents.
+
+---
+
+## Examples
+
+**Example 1: Full project security audit**
+
+User says: "Can you do a full security scan of this project?"
+
+Actions:
+1. Check Snyk is installed and authenticated
+2. Run `snyk code test` — review and fix any High/Critical source code findings
+3. Run `npm install` then `snyk test` — upgrade vulnerable dependencies
+4. If a Dockerfile exists, run `snyk container test IMAGE:TAG --file=Dockerfile`
+5. If IaC files exist, run `snyk iac test ./infra`
+6. Run `snyk monitor` to register for ongoing alerts
+
+Result: All Critical and High findings resolved across all applicable domains.
+Project is registered for continuous monitoring.
+
+---
+
+**Example 2: Fix a specific CVE in a dependency**
+
+User says: "Snyk says lodash 4.17.15 has a prototype pollution vulnerability, can you fix it?"
+
+Actions:
+1. Run `snyk test` to confirm the finding and see the upgrade path
+2. Check if a direct upgrade resolves it: `npm install lodash@latest`
+3. Re-run `snyk test` to confirm the vulnerability is gone
+4. If lodash is a transitive dep, identify which direct dependency pulls it in and
+   upgrade that, or use an `overrides` entry in package.json
+
+Result: `snyk test` no longer reports the prototype pollution CVE. package.json
+and package-lock.json are updated with the safe version.
+
+---
+
+**Example 3: Secure a Dockerfile before deployment**
+
+User says: "We're about to push a new container to production, scan it first"
+
+Actions:
+1. Run `snyk container test myapp:latest --file=Dockerfile`
+2. Review OS vulnerabilities — check if Snyk suggests a base image upgrade
+3. Review Dockerfile issues — look for missing USER directive, secrets in ENV, etc.
+4. Update the `FROM` line to the recommended base image version
+5. Fix any Dockerfile misconfigurations (add USER, move secrets to runtime env)
+6. Run `docker build -t myapp:latest-secure .` and re-scan to verify
+
+Result: Container image rebuilt with updated base image and secure Dockerfile.
+`snyk container test` passes with no Critical or High findings.
+
+---
+
+**Example 4: Review Terraform for security issues**
+
+User says: "Review my Terraform files for any security problems before we apply"
+
+Actions:
+1. Run `snyk iac test ./terraform/`
+2. Identify Critical/High findings — commonly: public S3 buckets, missing encryption,
+   over-permissive security groups, no CloudTrail logging
+3. Fix each misconfiguration using patterns from `references/iac-security.md`
+4. Re-run `snyk iac test` to confirm all issues are resolved
+5. Confirm the Terraform plan looks correct after changes
+
+Result: Terraform files updated with security fixes. `snyk iac test` returns no
+Critical or High findings. Safe to apply.
+
+---
+
+## Troubleshooting
+
+**Error:** `snyk: command not found`
+Cause: Snyk CLI is not installed.
+Solution: `npm install -g snyk` or `brew tap snyk/tap && brew install snyk`
+
+---
+
+**Error:** `Authentication failed. Please run snyk auth.`
+Cause: Not authenticated with Snyk.
+Solution: Run `snyk auth` (opens a browser to log in) or set the `SNYK_TOKEN`
+environment variable with a token from https://app.snyk.io/account.
+
+---
+
+**Error:** `Could not detect supported target files in [path]`
+Cause: Snyk couldn't find a package manifest, or dependencies haven't been installed.
+Solution: Run the appropriate install command first (`npm install`, `pip install -r requirements.txt`,
+etc.), then re-run. Use `--file=<manifest>` to point Snyk at a specific file.
+
+---
+
+**Error:** `snyk code test` exits with no output or "SAST is not enabled"
+Cause: Snyk Code (SAST) may not be enabled for the organization.
+Solution: Log into https://app.snyk.io, go to Settings, and enable Snyk Code. If
+using a free account, confirm Snyk Code is included in the plan.
+
+---
+
+**Exit code 1 vs exit code 2**
+- Exit code `1` means vulnerabilities were found — this is expected and working correctly.
+- Exit code `2` means an error occurred (bad auth, missing files, network issue).
+Only exit code `2` indicates something is wrong with the scan itself.
