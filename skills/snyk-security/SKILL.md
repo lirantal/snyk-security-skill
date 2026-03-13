@@ -1,14 +1,24 @@
 ---
 name: snyk-security
 description: >
-  Security scanning skill using the Snyk CLI. Use this skill whenever the user wants to
-  scan for security vulnerabilities, find security issues in code, check dependencies for
-  known CVEs, scan container images, or test infrastructure-as-code files for misconfigurations.
-  Trigger this skill for any request involving: security scanning, vulnerability detection,
-  SAST (static analysis), SCA (software composition analysis), dependency auditing, container
-  security, Dockerfile analysis, Terraform/Kubernetes security checks, snyk commands, or
-  "is my code/app/image/IaC secure?". Even if the user just asks to "check for issues" or
-  "review security" without mentioning Snyk specifically — use this skill.
+  Runs Snyk CLI security scans and fixes the vulnerabilities found. Covers four domains:
+  source code (SAST via snyk code test), open-source dependencies (SCA via snyk test),
+  container images (snyk container test), and infrastructure-as-code files such as
+  Terraform, Kubernetes YAML, and CloudFormation (snyk iac test). Use this skill whenever
+  the user wants to scan for vulnerabilities, audit dependencies, secure a Dockerfile or
+  container image, check IaC for misconfigurations, or asks "is my code/app/image/infra
+  secure?". Also trigger for requests like "fix security issues", "run a security scan",
+  "check for CVEs", "find hardcoded secrets", or "review my Terraform for security problems"
+  even if Snyk is not mentioned by name.
+license: MIT
+compatibility: >
+  Requires the Snyk CLI to be installed and authenticated (snyk auth or SNYK_TOKEN env var).
+  Compatible with Claude Code on macOS, Linux, and Windows. Requires internet access for
+  Snyk vulnerability database lookups. Supported languages and ecosystems vary by scan type;
+  see reference files for per-domain details.
+metadata:
+  author: lirantal
+  version: 1.0.0
 ---
 
 # Snyk Security Scanning
